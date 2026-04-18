@@ -136,17 +136,76 @@ INIT
 pip install -e .
 ```
 
+### 7. `337f088` — feat: add Razor/Blazor extractor with tree-sitter-razor
+
+**Files:** `graphify/detect.py`, `graphify/extract.py`
+**PR scope:** Main feature PR, depends on tree-sitter-razor (can be built from source)
+**Depends on:** Commit 1 (extension registration pattern)
+
+Adds `extract_razor()` function that parses `.razor` files using
+[tris203/tree-sitter-razor](https://github.com/tris203/tree-sitter-razor) and extracts:
+- `@inject` directives as service dependency edges
+- `@using` directives as import edges
+- `@implements` directives as inherits edges
+- Blazor component references (`<StatusBadge>`, `<SubmitBookDialog>`) excluding FluentUI and framework-internal components
+- Method declarations from `@code { }` blocks
+- Static method calls (`ClassName.Method()`) from `@code` blocks
+
+**Problem:** In Blazor projects, many C# classes (e.g. `DashboardFilterHelper`) are only
+referenced from `.razor` files. Without Razor support, these classes appear as completely
+disconnected graph components despite being core to the application.
+
+**Impact:** Main graph component grew from 915 to 995 nodes. `DashboardFilterHelper` and
+its 27-node cluster joined the main component.
+
+**Note:** `tree-sitter-razor` has a `setup.py` but the upstream version is missing `scanner.c`
+in the sources list. Fix: add `"src/scanner.c"` to the `ext_modules` sources in `setup.py`.
+
+---
+
+## Updated PR Strategy
+
+1. **PR 1 (Commits 1 + 2):** "Add F# language support" — blocked on tree-sitter-fsharp PyPI.
+2. **PR 2 (Commit 3):** "Add BCL method blocklist" — **submit now**.
+3. **PR 3 (Commit 4):** "Fix node ID collisions" — **submit now**.
+4. **PR 4 (Commit 5):** "Merge stub nodes" — **submit now**.
+5. **PR 5 (Commit 6):** "Resolve F# open statements" — depends on PR 1.
+6. **PR 6 (Commit 7):** "Add Razor/Blazor support" — can be submitted independently (tree-sitter-razor builds from source).
+
+---
+
+## Local Build: tree-sitter-razor Python Bindings
+
+```bash
+git clone https://github.com/tris203/tree-sitter-razor /path/to/tree-sitter-razor
+cd /path/to/tree-sitter-razor
+
+# Fix setup.py: add scanner.c to sources
+# In setup.py, change:
+#   sources=["bindings/python/tree_sitter_razor/binding.c", "src/parser.c"]
+# To:
+#   sources=["bindings/python/tree_sitter_razor/binding.c", "src/parser.c", "src/scanner.c"]
+
+pip install -e .
+```
+
+---
+
 ## Test Results
 
-Tested on a mixed F#/C# project (BooksKnowledgeDistillation):
+Tested on a mixed F#/C#/Blazor project (BooksKnowledgeDistillation):
 
 | Metric | Before | After all fixes |
 |--------|--------|-----------------|
-| Nodes | 1055 | 1052 |
-| Edges | 1699 | 1645 |
+| Nodes | 1055 | 1127 |
+| Edges | 1699 | 1714 |
 | INFERRED edges | 538 | 362 |
-| Communities | 57 | 51 |
+| Communities | 57 | 56 |
 | Isolated (degree=0) | 119 | 3 |
+| Main component | 915 | 995 |
+| Disconnected components | 24 | 32 |
 | Top hub | `Contains` (false!) | `BookService` (correct) |
 | F# types extracted | 0 | 44 (from Domain.fs alone) |
+| Razor pages extracted | 0 | 18 |
 | C# → F# inherits | broken (stubs) | correct (real definitions) |
+| DashboardFilterHelper | disconnected | in main component |
