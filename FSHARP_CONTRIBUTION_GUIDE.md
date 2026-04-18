@@ -22,11 +22,12 @@ This document describes the changes made on branch `fix/fsharp-graph-quality` to
 | [#438](https://github.com/safishamsi/graphify/issues/438) | [#441](https://github.com/safishamsi/graphify/pull/441) | `fix/node-id-collisions` | Disambiguate colliding node IDs from same-name files | Awaiting review |
 | [#439](https://github.com/safishamsi/graphify/issues/439) | [#442](https://github.com/safishamsi/graphify/pull/442) | `fix/merge-stub-nodes` | Merge stub nodes with real cross-language definitions | Awaiting review |
 
-**tree-sitter-razor** — 1 bug fix PR:
+**tree-sitter-razor** — 2 PRs:
 
 | Issue | PR | Branch | Description | Status |
 |-------|----|--------|-------------|--------|
-| [#18](https://github.com/tris203/tree-sitter-razor/issues/18) | [#19](https://github.com/tris203/tree-sitter-razor/pull/19) | `fix/python-scanner` | Include `scanner.c` in Python bindings `setup.py` | Awaiting review |
+| [#18](https://github.com/tris203/tree-sitter-razor/issues/18) | [#19](https://github.com/tris203/tree-sitter-razor/pull/19) | `fix/python-scanner` | Include `scanner.c` in Python bindings `setup.py` | **Merged** |
+| [#20](https://github.com/tris203/tree-sitter-razor/issues/20) | [#21](https://github.com/tris203/tree-sitter-razor/pull/21) | `feat/enable-pypi-publish` | Enable PyPI publishing + fix homepage URL | Awaiting review |
 
 **tree-sitter-fsharp** — 1 feature request:
 
@@ -40,7 +41,7 @@ This document describes the changes made on branch `fix/fsharp-graph-quality` to
 |---------|-------------|------------|
 | 1 + 2 | F# language support | tree-sitter-fsharp PyPI ([#176](https://github.com/ionide/tree-sitter-fsharp/issues/176)) |
 | 6 | Resolve F# `open` statements | F# support PR (commits 1+2) |
-| 7 | Razor/Blazor extractor | Can be submitted independently (tree-sitter-razor builds from source) |
+| 7 | Razor/Blazor extractor | Can be submitted independently; ideally after tree-sitter-razor is on PyPI ([#20](https://github.com/tris203/tree-sitter-razor/issues/20)) |
 | 8 | Deep extraction (F#/Razor parts) | F# and Razor PRs; C# parts could be extracted independently |
 
 ---
@@ -149,8 +150,7 @@ disconnected graph components despite being core to the application.
 **Impact:** Main graph component grew from 915 to 995 nodes. `DashboardFilterHelper` and
 its 27-node cluster joined the main component.
 
-**Note:** `tree-sitter-razor` has a `setup.py` but the upstream version is missing `scanner.c`
-in the sources list. Fix submitted: [tree-sitter-razor PR #19](https://github.com/tris203/tree-sitter-razor/pull/19).
+**Note:** `tree-sitter-razor` upstream had `scanner.c` missing from `setup.py` — fixed and merged via [PR #19](https://github.com/tris203/tree-sitter-razor/pull/19). PyPI publishing requested via [PR #21](https://github.com/tris203/tree-sitter-razor/pull/21).
 
 ---
 
@@ -223,16 +223,11 @@ pip install -e .
 
 ### tree-sitter-razor Python Bindings
 
+The `scanner.c` fix has been merged upstream ([PR #19](https://github.com/tris203/tree-sitter-razor/pull/19)). Once published to PyPI ([#20](https://github.com/tris203/tree-sitter-razor/issues/20)), install with `pip install tree-sitter-razor`. Until then, build from source:
+
 ```bash
 git clone https://github.com/tris203/tree-sitter-razor /path/to/tree-sitter-razor
 cd /path/to/tree-sitter-razor
-
-# Fix setup.py: add scanner.c to sources (PR #19 pending)
-# In setup.py, change:
-#   sources=["bindings/python/tree_sitter_razor/binding.c", "src/parser.c"]
-# To:
-#   sources=["bindings/python/tree_sitter_razor/binding.c", "src/parser.c", "src/scanner.c"]
-
 pip install -e .
 ```
 
