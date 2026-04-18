@@ -3224,7 +3224,7 @@ def collect_files(target: Path, *, follow_symlinks: bool = False, root: Path | N
     _EXTENSIONS = {
         ".py", ".js", ".ts", ".tsx", ".go", ".rs",
         ".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp",
-        ".rb", ".cs", ".kt", ".kts", ".scala", ".php", ".swift",
+        ".rb", ".cs", ".fs", ".fsx", ".kt", ".kts", ".scala", ".php", ".swift",
         ".lua", ".toc", ".zig", ".ps1",
         ".m", ".mm",
     }
