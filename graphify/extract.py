@@ -1385,6 +1385,264 @@ def extract_csharp(path: Path) -> dict:
     return _extract_generic(path, _CSHARP_CONFIG)
 
 
+def extract_fsharp(path: Path) -> dict:
+    """Extract types, functions, modules, and open statements from an F# file."""
+    try:
+        import tree_sitter_fsharp as tsfsharp
+        from tree_sitter import Language, Parser
+        language = Language(tsfsharp.language())
+    except ImportError:
+        return {"nodes": [], "edges": [], "error": "tree_sitter_fsharp not installed"}
+    except Exception as e:
+        return {"nodes": [], "edges": [], "error": str(e)}
+
+    try:
+        parser = Parser(language)
+        source = path.read_bytes()
+        tree = parser.parse(source)
+        root = tree.root_node
+    except Exception as e:
+        return {"nodes": [], "edges": [], "error": str(e)}
+
+    stem = path.stem
+    str_path = str(path)
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    seen_ids: set[str] = set()
+    function_bodies: list[tuple[str, object]] = []
+
+    def text(node) -> str:
+        return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+
+    def add_node(nid: str, label: str, line: int) -> None:
+        if nid not in seen_ids:
+            seen_ids.add(nid)
+            nodes.append({
+                "id": nid, "label": label, "file_type": "code",
+                "source_file": str_path, "source_location": f"L{line}",
+            })
+
+    def add_edge(src: str, tgt: str, relation: str, line: int,
+                 confidence: str = "EXTRACTED", weight: float = 1.0) -> None:
+        edges.append({
+            "source": src, "target": tgt, "relation": relation,
+            "confidence": confidence, "source_file": str_path,
+            "source_location": f"L{line}", "weight": weight,
+        })
+
+    file_nid = _make_id(str(path))
+    add_node(file_nid, path.name, 1)
+
+    def _get_type_name(defn_node) -> str | None:
+        for c in defn_node.children:
+            if c.type == "type_name":
+                for tc in c.children:
+                    if tc.type in ("identifier", "long_identifier"):
+                        return text(tc)
+        return None
+
+    def walk(node, parent_nid: str | None = None) -> None:
+        t = node.type
+
+        if t == "import_decl":
+            for child in node.children:
+                if child.type == "long_identifier":
+                    raw = text(child)
+                    module_name = raw.split(".")[-1].strip()
+                    if module_name:
+                        tgt_nid = _make_id(module_name)
+                        add_edge(file_nid, tgt_nid, "imports", node.start_point[0] + 1)
+                    break
+            return
+
+        if t == "type_definition":
+            for sub in node.children:
+                if sub.type in ("record_type_defn", "union_type_defn",
+                                "anon_type_defn", "abbrev_type_defn",
+                                "class_type_defn", "interface_type_defn"):
+                    type_name = _get_type_name(sub)
+                    if type_name:
+                        line = sub.start_point[0] + 1
+                        type_nid = _make_id(stem, type_name)
+                        add_node(type_nid, type_name, line)
+                        add_edge(file_nid, type_nid, "contains", line)
+
+                        if sub.type == "union_type_defn":
+                            for uc in sub.children:
+                                if uc.type == "union_type_cases":
+                                    for case_node in uc.children:
+                                        if case_node.type == "union_type_case":
+                                            for cc in case_node.children:
+                                                if cc.type == "identifier":
+                                                    case_name = text(cc)
+                                                    case_nid = _make_id(type_nid, case_name)
+                                                    qualified_label = f"{type_name}.{case_name}"
+                                                    add_node(case_nid, qualified_label, case_node.start_point[0] + 1)
+                                                    add_edge(type_nid, case_nid, "case_of", case_node.start_point[0] + 1)
+                                                    break
+
+                        for child in sub.children:
+                            if child.type in ("member_defn", "function_or_value_defn"):
+                                walk(child, type_nid)
+                            elif child.type == "type_extension_elements":
+                                for elem in child.children:
+                                    walk(elem, type_nid)
+            return
+
+        if t == "module_defn":
+            name_node = node.child_by_field_name("name")
+            mod_name = None
+            if name_node:
+                mod_name = text(name_node)
+            else:
+                for c in node.children:
+                    if c.type in ("identifier", "long_identifier"):
+                        mod_name = text(c)
+                        break
+            if mod_name:
+                line = node.start_point[0] + 1
+                mod_nid = _make_id(stem, mod_name)
+                add_node(mod_nid, mod_name, line)
+                add_edge(file_nid, mod_nid, "contains", line)
+                block = node.child_by_field_name("block")
+                if block:
+                    for child in block.children:
+                        walk(child, mod_nid)
+                else:
+                    for child in node.children:
+                        walk(child, mod_nid)
+            return
+
+        if t == "function_or_value_defn":
+            func_name = None
+            body_node = None
+            for child in node.children:
+                if child.type == "function_declaration_left":
+                    for sc in child.children:
+                        if sc.type == "identifier":
+                            func_name = text(sc)
+                            break
+                    body_node = node.child_by_field_name("body")
+                    break
+                elif child.type == "value_declaration_left":
+                    for sc in child.children:
+                        if sc.type in ("identifier_pattern", "identifier"):
+                            func_name = text(sc)
+                            break
+                    body_node = node.child_by_field_name("body")
+                    break
+            if func_name:
+                line = node.start_point[0] + 1
+                func_nid = _make_id(stem, func_name)
+                label = f"{func_name}()" if any(
+                    c.type == "function_declaration_left" for c in node.children
+                ) else func_name
+                add_node(func_nid, label, line)
+                container = parent_nid or file_nid
+                add_edge(container, func_nid, "contains", line)
+                if body_node:
+                    function_bodies.append((func_nid, body_node))
+            return
+
+        if t == "member_defn":
+            for child in node.children:
+                if child.type == "method_or_prop_defn":
+                    for sc in child.children:
+                        if sc.type == "property_or_ident":
+                            member_name = text(sc)
+                            line = node.start_point[0] + 1
+                            member_nid = _make_id(stem, member_name)
+                            add_node(member_nid, f"{member_name}()", line)
+                            if parent_nid:
+                                add_edge(parent_nid, member_nid, "contains", line)
+                            body = child.child_by_field_name("body")
+                            if body:
+                                function_bodies.append((member_nid, body))
+                            break
+            return
+
+        for child in node.children:
+            walk(child, parent_nid)
+
+    walk(root)
+
+    label_to_nid: dict[str, str] = {}
+    for n in nodes:
+        normalised = n["label"].strip("()").lstrip(".")
+        label_to_nid[normalised.lower()] = n["id"]
+
+    seen_call_pairs: set[tuple[str, str]] = set()
+    raw_calls: list[dict] = []
+
+    def walk_calls(node, caller_nid: str) -> None:
+        if node.type == "application_expression":
+            for child in node.children:
+                if child.type == "long_identifier_or_op":
+                    callee = text(child).split(".")[-1]
+                    tgt = label_to_nid.get(callee.lower())
+                    if tgt and tgt != caller_nid:
+                        pair = (caller_nid, tgt)
+                        if pair not in seen_call_pairs:
+                            seen_call_pairs.add(pair)
+                            add_edge(caller_nid, tgt, "calls",
+                                     node.start_point[0] + 1, confidence="EXTRACTED")
+                    else:
+                        raw_calls.append({
+                            "caller_nid": caller_nid, "callee": callee,
+                            "source_file": str_path,
+                            "source_location": f"L{node.start_point[0] + 1}",
+                        })
+                    break
+                elif child.type == "dot_expression":
+                    field_node = child.child_by_field_name("field")
+                    if field_node:
+                        callee = text(field_node)
+                        tgt = label_to_nid.get(callee.lower())
+                        if tgt and tgt != caller_nid:
+                            pair = (caller_nid, tgt)
+                            if pair not in seen_call_pairs:
+                                seen_call_pairs.add(pair)
+                                add_edge(caller_nid, tgt, "calls",
+                                         node.start_point[0] + 1, confidence="EXTRACTED")
+                        else:
+                            raw_calls.append({
+                                "caller_nid": caller_nid, "callee": callee,
+                                "source_file": str_path,
+                                "source_location": f"L{node.start_point[0] + 1}",
+                            })
+                    break
+                elif child.type in ("identifier", "long_identifier"):
+                    callee = text(child).split(".")[-1]
+                    tgt = label_to_nid.get(callee.lower())
+                    if tgt and tgt != caller_nid:
+                        pair = (caller_nid, tgt)
+                        if pair not in seen_call_pairs:
+                            seen_call_pairs.add(pair)
+                            add_edge(caller_nid, tgt, "calls",
+                                     node.start_point[0] + 1, confidence="EXTRACTED")
+                    else:
+                        raw_calls.append({
+                            "caller_nid": caller_nid, "callee": callee,
+                            "source_file": str_path,
+                            "source_location": f"L{node.start_point[0] + 1}",
+                        })
+                    break
+        for child in node.children:
+            if child.type == "function_or_value_defn":
+                continue
+            walk_calls(child, caller_nid)
+
+    for caller_nid, body in function_bodies:
+        walk_calls(body, caller_nid)
+
+    clean_edges = [e for e in edges if e["source"] in seen_ids and
+                   (e["target"] in seen_ids or e["relation"] == "imports")]
+    return {"nodes": nodes, "edges": clean_edges, "raw_calls": raw_calls,
+            "input_tokens": 0, "output_tokens": 0}
+
+
+
+
 def extract_kotlin(path: Path) -> dict:
     """Extract classes, objects, functions, and imports from a .kt/.kts file."""
     return _extract_generic(path, _KOTLIN_CONFIG)
@@ -3118,6 +3376,8 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
         ".hpp": extract_cpp,
         ".rb": extract_ruby,
         ".cs": extract_csharp,
+        ".fs": extract_fsharp,
+        ".fsx": extract_fsharp,
         ".kt": extract_kotlin,
         ".kts": extract_kotlin,
         ".scala": extract_scala,
