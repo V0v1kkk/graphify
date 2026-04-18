@@ -384,7 +384,7 @@ def _csharp_extra_walk(node, source: bytes, file_nid: str, stem: str, str_path: 
                        nodes: list, edges: list, seen_ids: set, function_bodies: list,
                        parent_class_nid: str | None, add_node_fn, add_edge_fn,
                        walk_fn) -> bool:
-    """Handle namespace_declaration for C#. Returns True if handled."""
+    """Handle namespace_declaration and constructor_declaration for C#."""
     if node.type == "namespace_declaration":
         name_node = node.child_by_field_name("name")
         if name_node:
@@ -397,6 +397,15 @@ def _csharp_extra_walk(node, source: bytes, file_nid: str, stem: str, str_path: 
         if body:
             for child in body.children:
                 walk_fn(child, parent_class_nid)
+        return True
+    if node.type == "constructor_declaration":
+        owner = parent_class_nid or file_nid
+        body = node.child_by_field_name("body")
+        if body:
+            function_bodies.append((owner, body))
+        return True
+    if node.type == "global_statement":
+        function_bodies.append((file_nid, node))
         return True
     return False
 
@@ -519,14 +528,15 @@ _CSHARP_CONFIG = LanguageConfig(
     class_types=frozenset({"class_declaration", "interface_declaration"}),
     function_types=frozenset({"method_declaration"}),
     import_types=frozenset({"using_directive"}),
-    call_types=frozenset({"invocation_expression"}),
+    call_types=frozenset({"invocation_expression", "object_creation_expression"}),
     call_function_field="function",
     call_accessor_node_types=frozenset({"member_access_expression"}),
     call_accessor_field="name",
     body_fallback_child_types=("declaration_list",),
-    function_boundary_types=frozenset({"method_declaration"}),
+    function_boundary_types=frozenset({"method_declaration", "constructor_declaration"}),
     import_handler=_import_csharp,
 )
+
 
 _KOTLIN_CONFIG = LanguageConfig(
     ts_module="tree_sitter_kotlin",
@@ -996,6 +1006,18 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
                                 if child.type == "identifier":
                                     callee_name = _read_text(child, source)
                                     break
+            elif config.ts_module == "tree_sitter_c_sharp" and node.type == "object_creation_expression":
+                # C#: new Type(...) → emit call to the created type
+                for child in node.children:
+                    if child.type == "identifier":
+                        callee_name = _read_text(child, source)
+                        break
+                    elif child.type == "generic_name":
+                        callee_name = _read_text(child, source).split("<")[0]
+                        break
+                    elif child.type == "qualified_name":
+                        callee_name = _read_text(child, source).split(".")[-1]
+                        break
             elif config.ts_module == "tree_sitter_c_sharp" and node.type == "invocation_expression":
                 # C#: try name field, then first named child
                 name_node = node.child_by_field_name("name")
@@ -1010,6 +1032,18 @@ def _extract_generic(path: Path, config: LanguageConfig) -> dict:
                             else:
                                 callee_name = raw
                             break
+                # Extract generic type arguments (e.g. AddDbContext<BookDbContext>)
+                full_text = _read_text(node, source)
+                import re as _re_inline
+                for gm in _re_inline.finditer(r'<([A-Z][A-Za-z0-9]+)(?:\s*,\s*([A-Z][A-Za-z0-9]+))?>', full_text):
+                    for g in (gm.group(1), gm.group(2)):
+                        if g and g != callee_name:
+                            raw_calls.append({
+                                "caller_nid": caller_nid,
+                                "callee": g,
+                                "source_file": str_path,
+                                "source_location": f"L{node.start_point[0] + 1}",
+                            })
             elif config.ts_module == "tree_sitter_php":
                 # PHP: distinguish call expression subtypes
                 if node.type == "function_call_expression":
@@ -1547,18 +1581,25 @@ def extract_fsharp(path: Path) -> dict:
         if t == "member_defn":
             for child in node.children:
                 if child.type == "method_or_prop_defn":
+                    member_name = None
+                    body_node = None
+                    found_eq = False
                     for sc in child.children:
                         if sc.type == "property_or_ident":
                             member_name = text(sc)
-                            line = node.start_point[0] + 1
-                            member_nid = _make_id(stem, member_name)
-                            add_node(member_nid, f"{member_name}()", line)
-                            if parent_nid:
-                                add_edge(parent_nid, member_nid, "contains", line)
-                            body = child.child_by_field_name("body")
-                            if body:
-                                function_bodies.append((member_nid, body))
-                            break
+                        elif sc.type == "=":
+                            found_eq = True
+                        elif found_eq and sc.is_named and body_node is None:
+                            body_node = sc
+                    if member_name:
+                        line = node.start_point[0] + 1
+                        member_nid = _make_id(stem, member_name)
+                        add_node(member_nid, f"{member_name}()", line)
+                        if parent_nid:
+                            add_edge(parent_nid, member_nid, "contains", line)
+                        if body_node:
+                            function_bodies.append((member_nid, body_node))
+                    break
             return
 
         for child in node.children:
@@ -1607,6 +1648,22 @@ def extract_fsharp(path: Path) -> dict:
                         else:
                             raw_calls.append({
                                 "caller_nid": caller_nid, "callee": callee,
+                                "source_file": str_path,
+                                "source_location": f"L{node.start_point[0] + 1}",
+                            })
+                    dot_text = text(child)
+                    root_id = dot_text.split(".")[0]
+                    if root_id and root_id[0].isupper() and root_id != callee:
+                        tgt2 = label_to_nid.get(root_id.lower())
+                        if tgt2 and tgt2 != caller_nid:
+                            pair2 = (caller_nid, tgt2)
+                            if pair2 not in seen_call_pairs:
+                                seen_call_pairs.add(pair2)
+                                add_edge(caller_nid, tgt2, "calls",
+                                         node.start_point[0] + 1, confidence="EXTRACTED")
+                        else:
+                            raw_calls.append({
+                                "caller_nid": caller_nid, "callee": root_id,
                                 "source_file": str_path,
                                 "source_location": f"L{node.start_point[0] + 1}",
                             })
@@ -1765,6 +1822,26 @@ def extract_razor(path: Path) -> dict:
                 add_edge(page_nid, method_nid, "contains", method_line)
             seen_callees: set[str] = set()
             for m in _re.finditer(r'\b([A-Z][A-Za-z0-9]+)\.\w+\s*\(', block_text):
+                callee = m.group(1)
+                if callee not in seen_callees and callee != stem:
+                    seen_callees.add(callee)
+                    raw_calls.append({
+                        "caller_nid": page_nid,
+                        "callee": callee,
+                        "source_file": str_path,
+                        "source_location": f"L{line + block_text[:m.start()].count(chr(10))}",
+                    })
+            for m in _re.finditer(r'<([A-Z][A-Za-z0-9]+)>', block_text):
+                callee = m.group(1)
+                if callee not in seen_callees and callee != stem:
+                    seen_callees.add(callee)
+                    raw_calls.append({
+                        "caller_nid": page_nid,
+                        "callee": callee,
+                        "source_file": str_path,
+                        "source_location": f"L{line + block_text[:m.start()].count(chr(10))}",
+                    })
+            for m in _re.finditer(r'\bnew\s+([A-Z][A-Za-z0-9]+)\s*[(\[{]', block_text):
                 callee = m.group(1)
                 if callee not in seen_callees and callee != stem:
                     seen_callees.add(callee)
@@ -3774,7 +3851,7 @@ def collect_files(target: Path, *, follow_symlinks: bool = False, root: Path | N
     _EXTENSIONS = {
         ".py", ".js", ".ts", ".tsx", ".go", ".rs",
         ".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp",
-        ".rb", ".cs", ".fs", ".fsx", ".kt", ".kts", ".scala", ".php", ".swift",
+        ".rb", ".cs", ".fs", ".fsx", ".razor", ".kt", ".kts", ".scala", ".php", ".swift",
         ".lua", ".toc", ".zig", ".ps1",
         ".m", ".mm",
     }
