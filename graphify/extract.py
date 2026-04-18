@@ -1641,6 +1641,144 @@ def extract_fsharp(path: Path) -> dict:
             "input_tokens": 0, "output_tokens": 0}
 
 
+def extract_razor(path: Path) -> dict:
+    """Extract component references, @inject services, and @using from Razor/Blazor files."""
+    try:
+        import tree_sitter_razor as ts_razor
+        from tree_sitter import Language, Parser
+        language = Language(ts_razor.language())
+    except ImportError:
+        return {"nodes": [], "edges": [], "error": "tree_sitter_razor not installed"}
+    except Exception as e:
+        return {"nodes": [], "edges": [], "error": str(e)}
+
+    try:
+        parser = Parser(language)
+        source = path.read_bytes()
+        tree = parser.parse(source)
+        root = tree.root_node
+    except Exception as e:
+        return {"nodes": [], "edges": [], "error": str(e)}
+
+    stem = path.stem
+    str_path = str(path)
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    seen_ids: set[str] = set()
+    raw_calls: list[dict] = []
+
+    def text(node) -> str:
+        return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+
+    def add_node(nid: str, label: str, line: int) -> None:
+        if nid not in seen_ids:
+            seen_ids.add(nid)
+            nodes.append({
+                "id": nid, "label": label, "file_type": "code",
+                "source_file": str_path, "source_location": f"L{line}",
+            })
+
+    def add_edge(src: str, tgt: str, relation: str, line: int,
+                 confidence: str = "EXTRACTED", weight: float = 1.0) -> None:
+        edges.append({
+            "source": src, "target": tgt, "relation": relation,
+            "confidence": confidence, "source_file": str_path,
+            "source_location": f"L{line}", "weight": weight,
+        })
+
+    file_nid = _make_id(str(path))
+    page_nid = _make_id(stem, stem)
+    add_node(file_nid, path.name, 1)
+    add_node(page_nid, stem, 1)
+    add_edge(file_nid, page_nid, "contains", 1)
+
+    import re as _re
+
+    for child in root.children:
+        line = child.start_point[0] + 1
+
+        if child.type == "razor_inject_directive":
+            for sub in child.children:
+                if sub.type == "variable_declaration":
+                    type_name = None
+                    for vc in sub.children:
+                        if vc.type == "identifier" and type_name is None:
+                            type_name = text(vc)
+                        elif vc.type == "generic_name":
+                            type_name = text(vc).split("<")[0]
+                    if type_name:
+                        raw_calls.append({
+                            "caller_nid": page_nid,
+                            "callee": type_name,
+                            "source_file": str_path,
+                            "source_location": f"L{line}",
+                        })
+                    break
+
+        elif child.type == "razor_using_directive":
+            ns_parts = []
+            for sub in child.children:
+                if sub.type in ("qualified_name", "identifier"):
+                    ns_parts.append(text(sub))
+            if ns_parts:
+                full_ns = ns_parts[-1]
+                last_segment = full_ns.split(".")[-1]
+                tgt_nid = _make_id(last_segment)
+                add_edge(file_nid, tgt_nid, "imports", line)
+
+        elif child.type == "razor_implements_directive":
+            iface_name = None
+            for sub in child.children:
+                if sub.type in ("identifier", "qualified_name", "generic_name"):
+                    iface_name = text(sub).split(".")[-1].split("<")[0]
+            if iface_name:
+                tgt_nid = _make_id(iface_name)
+                add_edge(page_nid, tgt_nid, "inherits", line)
+
+        elif child.type == "element":
+            src_text = source[child.start_byte:child.end_byte].decode("utf-8", errors="replace")
+            for m in _re.finditer(r'<([A-Z][A-Za-z]+)', src_text):
+                comp_name = m.group(1)
+                if comp_name.startswith("Fluent") or comp_name in (
+                    "PageTitle", "HeadContent", "CascadingValue",
+                    "ErrorBoundary", "Router", "RouteView", "FocusOnNavigate",
+                    "AuthorizeView", "NotFound", "Found", "LayoutView",
+                    "PropertyColumn", "TemplateColumn",
+                ):
+                    continue
+                raw_calls.append({
+                    "caller_nid": page_nid,
+                    "callee": comp_name,
+                    "source_file": str_path,
+                    "source_location": f"L{child.start_point[0] + 1}",
+                })
+
+        elif child.type == "razor_block":
+            block_text = source[child.start_byte:child.end_byte].decode("utf-8", errors="replace")
+            for m in _re.finditer(r'\b(?:private|protected|public|internal)\s+.*?\s+(\w+)\s*\(', block_text):
+                method_name = m.group(1)
+                if method_name in ("new", "get", "set", "value"):
+                    continue
+                method_nid = _make_id(stem, method_name)
+                method_line = line + block_text[:m.start()].count('\n')
+                add_node(method_nid, f"{method_name}()", method_line)
+                add_edge(page_nid, method_nid, "contains", method_line)
+            seen_callees: set[str] = set()
+            for m in _re.finditer(r'\b([A-Z][A-Za-z0-9]+)\.\w+\s*\(', block_text):
+                callee = m.group(1)
+                if callee not in seen_callees and callee != stem:
+                    seen_callees.add(callee)
+                    raw_calls.append({
+                        "caller_nid": page_nid,
+                        "callee": callee,
+                        "source_file": str_path,
+                        "source_location": f"L{line + block_text[:m.start()].count(chr(10))}",
+                    })
+
+    clean_edges = [e for e in edges if e["source"] in seen_ids and
+                   (e["target"] in seen_ids or e["relation"] == "imports")]
+    return {"nodes": nodes, "edges": clean_edges, "raw_calls": raw_calls,
+            "input_tokens": 0, "output_tokens": 0}
 
 
 def extract_kotlin(path: Path) -> dict:
@@ -3378,6 +3516,7 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
         ".cs": extract_csharp,
         ".fs": extract_fsharp,
         ".fsx": extract_fsharp,
+        ".razor": extract_razor,
         ".kt": extract_kotlin,
         ".kts": extract_kotlin,
         ".scala": extract_scala,
@@ -3497,7 +3636,6 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
                 unique_nodes.append(n)
         all_nodes = unique_nodes
 
-
     # ── Cross-language node merge ─────────────────────────────────────────────
     # C# extractors create stub nodes (empty source_file) for base types that
     # may actually be defined in F# files (or other C# files). Merge stubs
@@ -3558,6 +3696,7 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
     # Cross-file call resolution for all languages
     # Each extractor saved unresolved calls in raw_calls. Now that we have all
     # nodes from all files, resolve any callee that exists in another file.
+
     _BCL_METHOD_BLOCKLIST = frozenset({
         "contains", "equals", "gethashcode", "tostring", "gettype",
         "compareto", "startswith", "endswith", "replace", "split",
