@@ -87,15 +87,43 @@ Adds a post-extraction pass that resolves F# `open` import targets to actual fil
 
 ---
 
-## Suggested PR Strategy
+### 8. `478bdcb` — fix: deep extraction improvements for C# and F#
 
-1. **PR 1 (Commits 1 + 2):** "Add F# language support" — the main feature. Blocked on tree-sitter-fsharp PyPI availability.
-2. **PR 2 (Commit 3):** "Add BCL method blocklist to cross-file inference" — independent quality fix, can be submitted immediately.
-3. **PR 3 (Commit 4):** "Fix node ID collisions across same-name files" — independent quality fix, can be submitted immediately.
-4. **PR 4 (Commit 5):** "Merge stub nodes with real cross-language definitions" — general improvement, can be submitted immediately.
-5. **PR 5 (Commit 6):** "Resolve F# open statements to source files" — depends on PR 1.
+**Files:** `graphify/extract.py`
+**PR scope:** Independent improvement, benefits all .NET languages
+**Depends on:** Commits 2, 7
 
-PRs 2, 3, and 4 are independent improvements that benefit all languages and can be submitted right away without waiting for tree-sitter-fsharp.
+Multiple fixes to the C#, F#, and Razor extractors:
+
+**C# improvements:**
+- Add `object_creation_expression` to `call_types` (`new Type()` → edge to the created type)
+- Extract generic type arguments from `invocation_expression` (`AddDbContext<BookDbContext>()` → edge to `BookDbContext`)
+- Walk `constructor_declaration` bodies for call graph extraction via `_csharp_extra_walk`
+- Walk `global_statement` (top-level C# code in `Program.cs`) for calls (`app.UseMiddleware<ApiKeyMiddleware>()` → edge to `ApiKeyMiddleware`)
+
+**F# improvements:**
+- Fix `member_defn` body extraction: find body after `=` token instead of `child_by_field_name("body")` which returns `None` for F# members. This was causing all member method bodies to be invisible to call-graph analysis.
+- Extract root identifier from `dot_expression` chains (`PipelineMetrics.counter.Add()` → edge to `PipelineMetrics` module)
+
+**Razor improvements:**
+- Extract generic type arguments from `@code` blocks (`ShowDialogAsync<SubmitBookDialog>()` → edge to `SubmitBookDialog`)
+- Extract `new Type()` patterns from `@code` blocks
+
+**Impact:** Previously disconnected clusters (BookDbContext, ChapterStore, PageGistStore, BookProcessingHub, BkdWebApplicationFactory, PipelineMetrics, ApiKeyMiddleware, SubmitBookDialog) all joined the main component. Main component grew from 995 to 1058 nodes.
+
+---
+
+## Updated PR Strategy
+
+1. **PR 1 (Commits 1 + 2):** "Add F# language support" — blocked on tree-sitter-fsharp PyPI.
+2. **PR 2 (Commit 3):** "Add BCL method blocklist" — **submit now**.
+3. **PR 3 (Commit 4):** "Fix node ID collisions" — **submit now**.
+4. **PR 4 (Commit 5):** "Merge stub nodes" — **submit now**.
+5. **PR 5 (Commit 6):** "Resolve F# open statements" — depends on PR 1.
+6. **PR 6 (Commit 7):** "Add Razor/Blazor support" — can be submitted independently.
+7. **PR 7 (Commit 8):** "Deep extraction improvements" — **submit now** (C# parts are generic; F#/Razor parts depend on PRs 1, 6).
+
+PRs 2, 3, 4, and the C# parts of 7 are independent improvements that benefit all languages and can be submitted right away.
 
 ## Local Build: tree-sitter-fsharp Python Bindings
 
@@ -198,14 +226,17 @@ Tested on a mixed F#/C#/Blazor project (BooksKnowledgeDistillation):
 | Metric | Before | After all fixes |
 |--------|--------|-----------------|
 | Nodes | 1055 | 1127 |
-| Edges | 1699 | 1714 |
+| Edges | 1699 | 2177 |
 | INFERRED edges | 538 | 362 |
-| Communities | 57 | 56 |
+| Communities | 57 | 44 |
 | Isolated (degree=0) | 119 | 3 |
-| Main component | 915 | 995 |
-| Disconnected components | 24 | 32 |
+| Main component | 915 | 1058 |
+| Disconnected components | 24 | 20 |
 | Top hub | `Contains` (false!) | `BookService` (correct) |
 | F# types extracted | 0 | 44 (from Domain.fs alone) |
 | Razor pages extracted | 0 | 18 |
 | C# → F# inherits | broken (stubs) | correct (real definitions) |
 | DashboardFilterHelper | disconnected | in main component |
+| BookDbContext | disconnected | in main component |
+| PipelineMetrics | disconnected | in main component |
+| ApiKeyMiddleware | disconnected | in main component |
