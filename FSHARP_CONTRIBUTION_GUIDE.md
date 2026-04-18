@@ -1,12 +1,49 @@
-# F# Support for Graphify — Contribution Guide
+# F#, Razor/Blazor & Cross-Language Improvements for Graphify
 
-This document describes the changes made on branch `fix/fsharp-graph-quality` to add F# language support to graphify and fix several cross-language graph quality issues. Each commit is designed to be cherry-picked independently for separate upstream PRs.
+This document describes the changes made on branch `fix/fsharp-graph-quality` to add F# and Razor/Blazor language support to graphify and fix several cross-language graph quality issues. Each commit is designed to be cherry-picked independently for separate upstream PRs.
 
-## Prerequisites
+## Upstream Contributions
 
-Before these changes can be upstreamed, the [tree-sitter-fsharp](https://github.com/ionide/tree-sitter-fsharp) project needs to publish Python bindings to PyPI. Currently, `tree-sitter-fsharp` has `"python": false` in its `tree-sitter.json` and no PyPI package exists. The grammar itself works (v0.3.0), and Python bindings can be built locally from source using `setup.py` (see below).
+### Forks
 
-Once `tree-sitter-fsharp` is on PyPI, it can be added to graphify's optional dependencies just like other language grammars.
+| Upstream | Fork | Local path |
+|----------|------|------------|
+| [safishamsi/graphify](https://github.com/safishamsi/graphify) | [V0v1kkk/graphify](https://github.com/V0v1kkk/graphify) | `/home/vladimir/GitRoot/external/graphify` |
+| [tris203/tree-sitter-razor](https://github.com/tris203/tree-sitter-razor) | [V0v1kkk/tree-sitter-razor](https://github.com/V0v1kkk/tree-sitter-razor) | `/home/vladimir/GitRoot/external/tree-sitter-razor` |
+| [ionide/tree-sitter-fsharp](https://github.com/ionide/tree-sitter-fsharp) | [V0v1kkk/tree-sitter-fsharp](https://github.com/V0v1kkk/tree-sitter-fsharp) | `/home/vladimir/GitRoot/external/tree-sitter-fsharp` |
+
+### Submitted Issues & Pull Requests
+
+**graphify** — 3 unblocked PRs submitted:
+
+| Issue | PR | Branch | Description | Status |
+|-------|----|--------|-------------|--------|
+| [#437](https://github.com/safishamsi/graphify/issues/437) | [#440](https://github.com/safishamsi/graphify/pull/440) | `fix/bcl-method-blocklist` | BCL method blocklist for cross-file inference | Awaiting review |
+| [#438](https://github.com/safishamsi/graphify/issues/438) | [#441](https://github.com/safishamsi/graphify/pull/441) | `fix/node-id-collisions` | Disambiguate colliding node IDs from same-name files | Awaiting review |
+| [#439](https://github.com/safishamsi/graphify/issues/439) | [#442](https://github.com/safishamsi/graphify/pull/442) | `fix/merge-stub-nodes` | Merge stub nodes with real cross-language definitions | Awaiting review |
+
+**tree-sitter-razor** — 1 bug fix PR:
+
+| Issue | PR | Branch | Description | Status |
+|-------|----|--------|-------------|--------|
+| [#18](https://github.com/tris203/tree-sitter-razor/issues/18) | [#19](https://github.com/tris203/tree-sitter-razor/pull/19) | `fix/python-scanner` | Include `scanner.c` in Python bindings `setup.py` | Awaiting review |
+
+**tree-sitter-fsharp** — 1 feature request:
+
+| Issue | Description | Status |
+|-------|-------------|--------|
+| [#176](https://github.com/ionide/tree-sitter-fsharp/issues/176) | Publish Python bindings to PyPI | Awaiting response |
+
+### Blocked PRs (not yet submitted)
+
+| Commits | Description | Blocked on |
+|---------|-------------|------------|
+| 1 + 2 | F# language support | tree-sitter-fsharp PyPI ([#176](https://github.com/ionide/tree-sitter-fsharp/issues/176)) |
+| 6 | Resolve F# `open` statements | F# support PR (commits 1+2) |
+| 7 | Razor/Blazor extractor | Can be submitted independently (tree-sitter-razor builds from source) |
+| 8 | Deep extraction (F#/Razor parts) | F# and Razor PRs; C# parts could be extracted independently |
+
+---
 
 ## Commits (in order)
 
@@ -43,6 +80,7 @@ Registers `.fs` and `.fsx` in `_DISPATCH`.
 
 **Files:** `graphify/extract.py`
 **PR scope:** Independent improvement, benefits all .NET languages (C#, F#)
+**Submitted:** [PR #440](https://github.com/safishamsi/graphify/pull/440)
 
 Adds a blocklist of ~120 common .NET BCL/framework method names (`Contains`, `Equals`, `ToString`, `Where`, `Select`, `ListAsync`, `CreateDbContext`, etc.) that are skipped during cross-file call resolution.
 
@@ -56,6 +94,7 @@ Adds a blocklist of ~120 common .NET BCL/framework method names (`Contains`, `Eq
 
 **Files:** `graphify/extract.py`
 **PR scope:** Independent improvement, benefits all languages
+**Submitted:** [PR #441](https://github.com/safishamsi/graphify/pull/441)
 
 Adds a post-extraction pass that detects when multiple files produce nodes with the same ID (because `_make_id(stem, name)` uses only the file stem). When collisions are found, the parent directory name is prepended to disambiguate.
 
@@ -69,6 +108,7 @@ Adds a post-extraction pass that detects when multiple files produce nodes with 
 
 **Files:** `graphify/extract.py`
 **PR scope:** Cross-language improvement, benefits C#/F# mixed projects
+**Submitted:** [PR #442](https://github.com/safishamsi/graphify/pull/442)
 
 Adds a post-extraction pass that merges stub nodes (empty `source_file`) with real definitions by matching labels. Prioritizes definition files (`Interfaces.fs`, `Domain.fs`, `Types.fs`, `Contracts.fs`, `Abstractions.fs`).
 
@@ -84,6 +124,33 @@ Adds a post-extraction pass that merges stub nodes (empty `source_file`) with re
 **PR scope:** F#-specific, depends on Commit 2
 
 Adds a post-extraction pass that resolves F# `open` import targets to actual file nodes. `open BKD.Core.Domain` now creates an import edge to `src_bkd_core_domain_fs` instead of a generic stub node `domain`.
+
+---
+
+### 7. `337f088` — feat: add Razor/Blazor extractor with tree-sitter-razor
+
+**Files:** `graphify/detect.py`, `graphify/extract.py`
+**PR scope:** Main feature PR, depends on tree-sitter-razor (can be built from source)
+**Depends on:** Commit 1 (extension registration pattern)
+
+Adds `extract_razor()` function that parses `.razor` files using
+[tris203/tree-sitter-razor](https://github.com/tris203/tree-sitter-razor) and extracts:
+- `@inject` directives as service dependency edges
+- `@using` directives as import edges
+- `@implements` directives as inherits edges
+- Blazor component references (`<StatusBadge>`, `<SubmitBookDialog>`) excluding FluentUI and framework-internal components
+- Method declarations from `@code { }` blocks
+- Static method calls (`ClassName.Method()`) from `@code` blocks
+
+**Problem:** In Blazor projects, many C# classes (e.g. `DashboardFilterHelper`) are only
+referenced from `.razor` files. Without Razor support, these classes appear as completely
+disconnected graph components despite being core to the application.
+
+**Impact:** Main graph component grew from 915 to 995 nodes. `DashboardFilterHelper` and
+its 27-node cluster joined the main component.
+
+**Note:** `tree-sitter-razor` has a `setup.py` but the upstream version is missing `scanner.c`
+in the sources list. Fix submitted: [tree-sitter-razor PR #19](https://github.com/tris203/tree-sitter-razor/pull/19).
 
 ---
 
@@ -113,21 +180,11 @@ Multiple fixes to the C#, F#, and Razor extractors:
 
 ---
 
-## Updated PR Strategy
+## Local Build Instructions
 
-1. **PR 1 (Commits 1 + 2):** "Add F# language support" — blocked on tree-sitter-fsharp PyPI.
-2. **PR 2 (Commit 3):** "Add BCL method blocklist" — **submit now**.
-3. **PR 3 (Commit 4):** "Fix node ID collisions" — **submit now**.
-4. **PR 4 (Commit 5):** "Merge stub nodes" — **submit now**.
-5. **PR 5 (Commit 6):** "Resolve F# open statements" — depends on PR 1.
-6. **PR 6 (Commit 7):** "Add Razor/Blazor support" — can be submitted independently.
-7. **PR 7 (Commit 8):** "Deep extraction improvements" — **submit now** (C# parts are generic; F#/Razor parts depend on PRs 1, 6).
+### tree-sitter-fsharp Python Bindings
 
-PRs 2, 3, 4, and the C# parts of 7 are independent improvements that benefit all languages and can be submitted right away.
-
-## Local Build: tree-sitter-fsharp Python Bindings
-
-Until tree-sitter-fsharp publishes to PyPI, build locally:
+Until tree-sitter-fsharp publishes to PyPI ([#176](https://github.com/ionide/tree-sitter-fsharp/issues/176)), build locally:
 
 ```bash
 git clone https://github.com/ionide/tree-sitter-fsharp /path/to/tree-sitter-fsharp
@@ -164,51 +221,13 @@ INIT
 pip install -e .
 ```
 
-### 7. `337f088` — feat: add Razor/Blazor extractor with tree-sitter-razor
-
-**Files:** `graphify/detect.py`, `graphify/extract.py`
-**PR scope:** Main feature PR, depends on tree-sitter-razor (can be built from source)
-**Depends on:** Commit 1 (extension registration pattern)
-
-Adds `extract_razor()` function that parses `.razor` files using
-[tris203/tree-sitter-razor](https://github.com/tris203/tree-sitter-razor) and extracts:
-- `@inject` directives as service dependency edges
-- `@using` directives as import edges
-- `@implements` directives as inherits edges
-- Blazor component references (`<StatusBadge>`, `<SubmitBookDialog>`) excluding FluentUI and framework-internal components
-- Method declarations from `@code { }` blocks
-- Static method calls (`ClassName.Method()`) from `@code` blocks
-
-**Problem:** In Blazor projects, many C# classes (e.g. `DashboardFilterHelper`) are only
-referenced from `.razor` files. Without Razor support, these classes appear as completely
-disconnected graph components despite being core to the application.
-
-**Impact:** Main graph component grew from 915 to 995 nodes. `DashboardFilterHelper` and
-its 27-node cluster joined the main component.
-
-**Note:** `tree-sitter-razor` has a `setup.py` but the upstream version is missing `scanner.c`
-in the sources list. Fix: add `"src/scanner.c"` to the `ext_modules` sources in `setup.py`.
-
----
-
-## Updated PR Strategy
-
-1. **PR 1 (Commits 1 + 2):** "Add F# language support" — blocked on tree-sitter-fsharp PyPI.
-2. **PR 2 (Commit 3):** "Add BCL method blocklist" — **submit now**.
-3. **PR 3 (Commit 4):** "Fix node ID collisions" — **submit now**.
-4. **PR 4 (Commit 5):** "Merge stub nodes" — **submit now**.
-5. **PR 5 (Commit 6):** "Resolve F# open statements" — depends on PR 1.
-6. **PR 6 (Commit 7):** "Add Razor/Blazor support" — can be submitted independently (tree-sitter-razor builds from source).
-
----
-
-## Local Build: tree-sitter-razor Python Bindings
+### tree-sitter-razor Python Bindings
 
 ```bash
 git clone https://github.com/tris203/tree-sitter-razor /path/to/tree-sitter-razor
 cd /path/to/tree-sitter-razor
 
-# Fix setup.py: add scanner.c to sources
+# Fix setup.py: add scanner.c to sources (PR #19 pending)
 # In setup.py, change:
 #   sources=["bindings/python/tree_sitter_razor/binding.c", "src/parser.c"]
 # To:
@@ -221,14 +240,14 @@ pip install -e .
 
 ## Test Results
 
-Tested on a mixed F#/C#/Blazor project (BooksKnowledgeDistillation):
+Tested on a mixed F#/C#/Blazor project (BooksKnowledgeDistillation, 141 code files):
 
 | Metric | Before | After all fixes |
 |--------|--------|-----------------|
 | Nodes | 1055 | 1127 |
 | Edges | 1699 | 2177 |
 | INFERRED edges | 538 | 362 |
-| Communities | 57 | 44 |
+| Communities | 57 | 44 (all labeled) |
 | Isolated (degree=0) | 119 | 3 |
 | Main component | 915 | 1058 |
 | Disconnected components | 24 | 20 |
@@ -240,3 +259,5 @@ Tested on a mixed F#/C#/Blazor project (BooksKnowledgeDistillation):
 | BookDbContext | disconnected | in main component |
 | PipelineMetrics | disconnected | in main component |
 | ApiKeyMiddleware | disconnected | in main component |
+
+The remaining 20 disconnected components are genuinely isolated code: Python utility scripts, JavaScript files, test classes without external references, unused Blazor components, and legacy code.
