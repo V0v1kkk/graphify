@@ -3537,6 +3537,24 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
             if e["target"] in stub_to_real:
                 e["target"] = stub_to_real[e["target"]]
 
+    # ── F# open → file resolution ─────────────────────────────────────────────
+    # F# `open BKD.Core.Domain` should link to the file that defines the
+    # Domain module/namespace, not a generic stub. Build a map from the last
+    # segment of each source file's stem to its file node ID.
+    file_stem_to_nid: dict[str, str] = {}
+    for n in all_nodes:
+        sf = n.get("source_file", "")
+        if sf and n["label"].endswith((".fs", ".fsx")):
+            stem_lower = Path(sf).stem.lower()
+            file_stem_to_nid[stem_lower] = n["id"]
+
+    for e in all_edges:
+        if e["relation"] == "imports":
+            tgt_id = e["target"]
+            tgt_lower = tgt_id.lower()
+            if tgt_lower in file_stem_to_nid:
+                e["target"] = file_stem_to_nid[tgt_lower]
+
     # Cross-file call resolution for all languages
     # Each extractor saved unresolved calls in raw_calls. Now that we have all
     # nodes from all files, resolve any callee that exists in another file.
