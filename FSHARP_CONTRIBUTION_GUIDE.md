@@ -6,43 +6,53 @@ This document describes the changes made on branch `fix/fsharp-graph-quality` to
 
 ### Forks
 
-| Upstream | Fork | Local path |
-|----------|------|------------|
-| [safishamsi/graphify](https://github.com/safishamsi/graphify) | [V0v1kkk/graphify](https://github.com/V0v1kkk/graphify) | `/home/vladimir/GitRoot/external/graphify` |
-| [tris203/tree-sitter-razor](https://github.com/tris203/tree-sitter-razor) | [V0v1kkk/tree-sitter-razor](https://github.com/V0v1kkk/tree-sitter-razor) | `/home/vladimir/GitRoot/external/tree-sitter-razor` |
+
+| Upstream                                                                  | Fork                                                                        | Local path                                           |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------- |
+| [safishamsi/graphify](https://github.com/safishamsi/graphify)             | [V0v1kkk/graphify](https://github.com/V0v1kkk/graphify)                     | `/home/vladimir/GitRoot/external/graphify`           |
+| [tris203/tree-sitter-razor](https://github.com/tris203/tree-sitter-razor) | [V0v1kkk/tree-sitter-razor](https://github.com/V0v1kkk/tree-sitter-razor)   | `/home/vladimir/GitRoot/external/tree-sitter-razor`  |
 | [ionide/tree-sitter-fsharp](https://github.com/ionide/tree-sitter-fsharp) | [V0v1kkk/tree-sitter-fsharp](https://github.com/V0v1kkk/tree-sitter-fsharp) | `/home/vladimir/GitRoot/external/tree-sitter-fsharp` |
+
 
 ### Submitted Issues & Pull Requests
 
 **graphify** — 3 unblocked PRs submitted:
 
-| Issue | PR | Branch | Description | Status |
-|-------|----|--------|-------------|--------|
-| [#437](https://github.com/safishamsi/graphify/issues/437) | [#440](https://github.com/safishamsi/graphify/pull/440) | `fix/bcl-method-blocklist` | BCL method blocklist for cross-file inference | Awaiting review |
-| [#438](https://github.com/safishamsi/graphify/issues/438) | [#441](https://github.com/safishamsi/graphify/pull/441) | `fix/node-id-collisions` | Disambiguate colliding node IDs from same-name files | Awaiting review |
-| [#439](https://github.com/safishamsi/graphify/issues/439) | [#442](https://github.com/safishamsi/graphify/pull/442) | `fix/merge-stub-nodes` | Merge stub nodes with real cross-language definitions | Awaiting review |
+
+| Issue                                                     | PR                                                      | Branch                     | Description                                           | Status          |
+| --------------------------------------------------------- | ------------------------------------------------------- | -------------------------- | ----------------------------------------------------- | --------------- |
+| [#437](https://github.com/safishamsi/graphify/issues/437) | [#440](https://github.com/safishamsi/graphify/pull/440) | `fix/bcl-method-blocklist` | BCL method blocklist for cross-file inference         | Awaiting review |
+| [#438](https://github.com/safishamsi/graphify/issues/438) | [#441](https://github.com/safishamsi/graphify/pull/441) | `fix/node-id-collisions`   | Disambiguate colliding node IDs from same-name files  | Review feedback addressed, 5 tests added |
+| [#439](https://github.com/safishamsi/graphify/issues/439) | [#442](https://github.com/safishamsi/graphify/pull/442) | `fix/merge-stub-nodes`     | Merge stub nodes with real cross-language definitions | Awaiting review |
+
 
 **tree-sitter-razor** — 2 PRs:
 
-| Issue | PR | Branch | Description | Status |
-|-------|----|--------|-------------|--------|
-| [#18](https://github.com/tris203/tree-sitter-razor/issues/18) | [#19](https://github.com/tris203/tree-sitter-razor/pull/19) | `fix/python-scanner` | Include `scanner.c` in Python bindings `setup.py` | **Merged** |
-| [#20](https://github.com/tris203/tree-sitter-razor/issues/20) | [#21](https://github.com/tris203/tree-sitter-razor/pull/21) | `feat/enable-pypi-publish` | Enable PyPI publishing + fix homepage URL | Awaiting review |
+
+| Issue                                                         | PR                                                          | Branch                     | Description                                       | Status          |
+| ------------------------------------------------------------- | ----------------------------------------------------------- | -------------------------- | ------------------------------------------------- | --------------- |
+| [#18](https://github.com/tris203/tree-sitter-razor/issues/18) | [#19](https://github.com/tris203/tree-sitter-razor/pull/19) | `fix/python-scanner`       | Include `scanner.c` in Python bindings `setup.py` | **Merged**      |
+| [#20](https://github.com/tris203/tree-sitter-razor/issues/20) | [#21](https://github.com/tris203/tree-sitter-razor/pull/21) | `feat/enable-pypi-publish` | Enable PyPI publishing + fix homepage URL         | Awaiting review |
+
 
 **tree-sitter-fsharp** — 1 feature request:
 
-| Issue | Description | Status |
-|-------|-------------|--------|
+
+| Issue                                                           | Description                     | Status            |
+| --------------------------------------------------------------- | ------------------------------- | ----------------- |
 | [#176](https://github.com/ionide/tree-sitter-fsharp/issues/176) | Publish Python bindings to PyPI | Awaiting response |
+
 
 ### Blocked PRs (not yet submitted)
 
-| Commits | Description | Blocked on |
-|---------|-------------|------------|
-| 1 + 2 | F# language support | tree-sitter-fsharp PyPI ([#176](https://github.com/ionide/tree-sitter-fsharp/issues/176)) |
-| 6 | Resolve F# `open` statements | F# support PR (commits 1+2) |
-| 7 | Razor/Blazor extractor | Can be submitted independently; ideally after tree-sitter-razor is on PyPI ([#20](https://github.com/tris203/tree-sitter-razor/issues/20)) |
-| 8 | Deep extraction (F#/Razor parts) | F# and Razor PRs; C# parts could be extracted independently |
+
+| Commits | Description                      | Blocked on                                                                                                                                 |
+| ------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1 + 2   | F# language support              | tree-sitter-fsharp PyPI ([#176](https://github.com/ionide/tree-sitter-fsharp/issues/176))                                                  |
+| 6       | Resolve F# `open` statements     | F# support PR (commits 1+2)                                                                                                                |
+| 7       | Razor/Blazor extractor           | Can be submitted independently; ideally after tree-sitter-razor is on PyPI ([#20](https://github.com/tris203/tree-sitter-razor/issues/20)) |
+| 8       | Deep extraction (F#/Razor parts) | F# and Razor PRs; C# parts could be extracted independently                                                                                |
+
 
 ---
 
@@ -64,6 +74,7 @@ Registers `.fs` and `.fsx` in `CODE_EXTENSIONS` (detect.py) and `_EXTENSIONS` (e
 **Depends on:** Commit 1
 
 Adds a custom `extract_fsharp()` function (not using `LanguageConfig` due to F#'s nested AST structure for names). Extracts:
+
 - Modules (`module_defn`) with containment edges
 - Types: records, unions, classes, interfaces, abbreviations (`type_definition`)
 - Union type cases with **qualified labels** (e.g. `EdgeRelation.Contains` instead of `Contains`) to avoid name collisions with common BCL methods
@@ -136,6 +147,7 @@ Adds a post-extraction pass that resolves F# `open` import targets to actual fil
 
 Adds `extract_razor()` function that parses `.razor` files using
 [tris203/tree-sitter-razor](https://github.com/tris203/tree-sitter-razor) and extracts:
+
 - `@inject` directives as service dependency edges
 - `@using` directives as import edges
 - `@implements` directives as inherits edges
@@ -163,16 +175,19 @@ its 27-node cluster joined the main component.
 Multiple fixes to the C#, F#, and Razor extractors:
 
 **C# improvements:**
+
 - Add `object_creation_expression` to `call_types` (`new Type()` → edge to the created type)
 - Extract generic type arguments from `invocation_expression` (`AddDbContext<BookDbContext>()` → edge to `BookDbContext`)
 - Walk `constructor_declaration` bodies for call graph extraction via `_csharp_extra_walk`
 - Walk `global_statement` (top-level C# code in `Program.cs`) for calls (`app.UseMiddleware<ApiKeyMiddleware>()` → edge to `ApiKeyMiddleware`)
 
 **F# improvements:**
+
 - Fix `member_defn` body extraction: find body after `=` token instead of `child_by_field_name("body")` which returns `None` for F# members. This was causing all member method bodies to be invisible to call-graph analysis.
 - Extract root identifier from `dot_expression` chains (`PipelineMetrics.counter.Add()` → edge to `PipelineMetrics` module)
 
 **Razor improvements:**
+
 - Extract generic type arguments from `@code` blocks (`ShowDialogAsync<SubmitBookDialog>()` → edge to `SubmitBookDialog`)
 - Extract `new Type()` patterns from `@code` blocks
 
@@ -237,22 +252,24 @@ pip install -e .
 
 Tested on a mixed F#/C#/Blazor project (BooksKnowledgeDistillation, 141 code files):
 
-| Metric | Before | After all fixes |
-|--------|--------|-----------------|
-| Nodes | 1055 | 1127 |
-| Edges | 1699 | 2177 |
-| INFERRED edges | 538 | 362 |
-| Communities | 57 | 44 (all labeled) |
-| Isolated (degree=0) | 119 | 3 |
-| Main component | 915 | 1058 |
-| Disconnected components | 24 | 20 |
-| Top hub | `Contains` (false!) | `BookService` (correct) |
-| F# types extracted | 0 | 44 (from Domain.fs alone) |
-| Razor pages extracted | 0 | 18 |
-| C# → F# inherits | broken (stubs) | correct (real definitions) |
-| DashboardFilterHelper | disconnected | in main component |
-| BookDbContext | disconnected | in main component |
-| PipelineMetrics | disconnected | in main component |
-| ApiKeyMiddleware | disconnected | in main component |
+
+| Metric                  | Before              | After all fixes            |
+| ----------------------- | ------------------- | -------------------------- |
+| Nodes                   | 1055                | 1127                       |
+| Edges                   | 1699                | 2177                       |
+| INFERRED edges          | 538                 | 362                        |
+| Communities             | 57                  | 44 (all labeled)           |
+| Isolated (degree=0)     | 119                 | 3                          |
+| Main component          | 915                 | 1058                       |
+| Disconnected components | 24                  | 20                         |
+| Top hub                 | `Contains` (false!) | `BookService` (correct)    |
+| F# types extracted      | 0                   | 44 (from Domain.fs alone)  |
+| Razor pages extracted   | 0                   | 18                         |
+| C# → F# inherits        | broken (stubs)      | correct (real definitions) |
+| DashboardFilterHelper   | disconnected        | in main component          |
+| BookDbContext           | disconnected        | in main component          |
+| PipelineMetrics         | disconnected        | in main component          |
+| ApiKeyMiddleware        | disconnected        | in main component          |
+
 
 The remaining 20 disconnected components are genuinely isolated code: Python utility scripts, JavaScript files, test classes without external references, unused Blazor components, and legacy code.
